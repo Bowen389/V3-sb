@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 import argparse
+import time
 import akshare as ak
 import pandas as pd
 
@@ -44,8 +45,28 @@ def main():
     def load(row):
         code = str(row["代码"])
         try:
-            raw = ak.stock_zh_a_hist_em(symbol=code, start_date=start, end_date=fmt(buy), adjust="")
-            adj = ak.stock_zh_a_hist_em(symbol=code, start_date=start, end_date=fmt(signal), adjust="qfq")
+            def history(adjust, end):
+                try:
+                    frame = ak.stock_zh_a_hist_em(symbol=code, start_date=start, end_date=end, adjust=adjust, timeout=6)
+                    if not frame.empty:
+                        return frame
+                except Exception as error:
+                    print(f"{code} 东方财富日线失败，改用新浪: {error}", flush=True)
+                symbol = ("sh" if code.startswith("6") else "sz") + code
+                for attempt in range(2):
+                    try:
+                        frame = ak.stock_zh_a_daily_sina(symbol=symbol, start_date=start, end_date=end, adjust=adjust)
+                        if frame.empty:
+                            raise ValueError("新浪日线为空")
+                        return frame.rename(columns={"date": "日期", "open": "开盘", "close": "收盘",
+                                                     "high": "最高", "low": "最低", "amount": "成交额"})
+                    except Exception:
+                        if attempt == 1:
+                            raise
+                        time.sleep(1)
+
+            raw = history("", fmt(buy))
+            adj = history("qfq", fmt(signal))
             raw = raw.set_index(pd.to_datetime(raw["日期"])).sort_index()
             adj = adj.set_index(pd.to_datetime(adj["日期"])).sort_index()
             if signal not in raw.index or signal not in adj.index:
