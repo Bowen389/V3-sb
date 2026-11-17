@@ -1,0 +1,48 @@
+name: 首板与 V3 每日模拟
+
+on:
+  schedule:
+    - cron: '12 8 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      buy_date:
+        description: '买入日 YYYY-MM-DD，留空为北京时间今天'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: v3-sb-reports
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: 运行扫描
+        env:
+          BUY_DATE: ${{ inputs.buy_date }}
+        run: |
+          if [ -n "$BUY_DATE" ]; then
+            python scan.py --buy-date "$BUY_DATE"
+          else
+            python scan.py
+          fi
+      - name: 保存报告
+        run: |
+          if [ -d reports ]; then
+            git add reports
+            if ! git diff --cached --quiet; then
+              git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -m "Update V3-sb report"
+              git push
+            fi
+          fi
