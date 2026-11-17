@@ -1,6 +1,12 @@
 name: 首板与 V3 每日模拟
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - scan.py
+      - requirements.txt
+      - .github/workflows/daily.yml
   schedule:
     - cron: '12 8 * * 1-5'
   workflow_dispatch:
