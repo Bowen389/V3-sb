@@ -47,7 +47,7 @@ def main():
         try:
             def history(adjust, end):
                 try:
-                    frame = ak.stock_zh_a_hist_em(symbol=code, start_date=start, end_date=end, adjust=adjust, timeout=6)
+                    frame = ak.stock_zh_a_hist_em(symbol=code, start_date=start, end_date=end, adjust=adjust)
                     if not frame.empty:
                         return frame
                 except Exception as error:
@@ -55,7 +55,7 @@ def main():
                 symbol = ("sh" if code.startswith("6") else "sz") + code
                 for attempt in range(2):
                     try:
-                        frame = ak.stock_zh_a_daily_sina(symbol=symbol, start_date=start, end_date=end, adjust=adjust)
+                        frame = ak.stock_zh_a_hist_sina(symbol=symbol, start_date=start, end_date=end, adjust=adjust)
                         if frame.empty:
                             raise ValueError("新浪日线为空")
                         return frame.rename(columns={"date": "日期", "open": "开盘", "close": "收盘",
