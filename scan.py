@@ -20,6 +20,7 @@ def choose(rows):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--buy-date", default=datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat())
+    parser.add_argument('--preselect', action='store_true', help='将指定日期作为盘后信号日')
     args = parser.parse_args()
     buy = pd.Timestamp(args.buy_date)
     today = pd.Timestamp(datetime.now(ZoneInfo("Asia/Shanghai")).date())
@@ -31,7 +32,7 @@ def main():
         return
     if buy > today:
         raise ValueError("目标日期在未来")
-    signal = calendar[calendar < buy].iloc[-1]
+    signal = buy if args.preselect else calendar[calendar < buy].iloc[-1]
     previous = calendar[calendar < signal].iloc[-1]
     fmt = lambda day: day.strftime("%Y%m%d")
     pool = ak.stock_zt_pool_em(date=fmt(signal))
@@ -61,7 +62,7 @@ def main():
                 "v3": len(closes) >= 61 and bars.at[signal, "最高"] != bars.at[signal, "最低"],
                 "gap": None, "open": None,
             }
-            if buy in raw.index:
+            if not args.preselect and buy in raw.index:
                 close = float(bars.at[signal, "收盘"])
                 open_price = float(raw.at[buy, "开盘"])
                 record.update(gap=open_price / close - 1, open=open_price)
@@ -80,6 +81,21 @@ def main():
         scores = ((momentum - momentum.mean()) / momentum.std(ddof=0).replace(0, float("nan"))).fillna(0).sum(axis=1)
         for row, score in zip(v3, scores):
             row["score"] = score
+    if args.preselect:
+        next_dates = calendar[calendar > signal]
+        if next_dates.empty:
+            raise RuntimeError("交易日历缺少下一交易日")
+        target = next_dates.iloc[0].date()
+        lines = [f"# {signal.date()} 盘后预选", "", f"适用开盘日 {target}。开盘按缺口排序，首板优先，V3 去重补位。", ""]
+        for label, key in (("首板", "first"), ("V3", "v3")):
+            candidates = sorted((r for r in rows if r[key]), key=lambda r: (-r["amount"], r["code"]))
+            lines += [f"## {label}候选（{len(candidates)} 只）", "", "| 代码 | 股票 | 信号日成交额 |", "| --- | --- | ---: |"]
+            lines.extend(f"| {r['code']} | {r['name']} | {r['amount']:,.0f} |" for r in candidates)
+            lines.append("")
+        path = Path("reports/preselect") / f"{signal.date()}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return
     eligible = [r for r in rows if r["gap"] is not None and -0.099 < r["gap"] < 0 and r["open"] <= 100]
     if rows and all(r["open"] is None for r in rows):
         raise RuntimeError("目标日开盘行情尚未就绪")
