@@ -24,7 +24,7 @@ def main():
     args = parser.parse_args()
     buy = pd.Timestamp(args.buy_date)
     today = pd.Timestamp(datetime.now(ZoneInfo("Asia/Shanghai")).date())
-    calendar = pd.to_datetime(ak.tool_trade_date_hist_sina()["trade_date"]).sort_values()
+    calendar = pd.to_datetime(ak.calendar_trade_date_hist_sina()["trade_date"]).sort_values()
     if buy > calendar.iloc[-1]:
         raise RuntimeError("交易日历尚未覆盖目标日期")
     if buy not in set(calendar):
@@ -44,8 +44,8 @@ def main():
     def load(row):
         code = str(row["代码"])
         try:
-            raw = ak.stock_zh_a_hist(symbol=code, start_date=start, end_date=fmt(buy), adjust="")
-            adj = ak.stock_zh_a_hist(symbol=code, start_date=start, end_date=fmt(signal), adjust="qfq")
+            raw = ak.stock_zh_a_hist_em(symbol=code, start_date=start, end_date=fmt(buy), adjust="")
+            adj = ak.stock_zh_a_hist_em(symbol=code, start_date=start, end_date=fmt(signal), adjust="qfq")
             raw = raw.set_index(pd.to_datetime(raw["日期"])).sort_index()
             adj = adj.set_index(pd.to_datetime(adj["日期"])).sort_index()
             if signal not in raw.index or signal not in adj.index:
