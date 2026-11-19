@@ -48,8 +48,7 @@ def history(code, adjust, start, end, required):
     symbol = ('sh' if code.startswith('6') else 'sz') + code
     sources = [lambda: ak.stock_zh_a_hist_em(symbol=code, start_date=start, end_date=end, adjust=adjust),
                lambda: sina_history(symbol=symbol, start_date=start, end_date=end, adjust=adjust)]
-    if adjust:
-        sources.append(lambda: ak.stock_zh_a_hist_tx(symbol=symbol, start_date=start, end_date=end, adjust=adjust))
+    sources.append(lambda: ak.stock_zh_a_hist_tx(symbol=symbol, start_date=start, end_date=end, adjust=adjust))
     errors = []
     for source in sources:
         try:
