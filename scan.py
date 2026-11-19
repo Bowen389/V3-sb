@@ -37,8 +37,6 @@ def history(code, adjust, start, end, required):
             raise ValueError(f'缺少目标日日线 {required}')
         if frame[needed[1:]].isna().any().any() or (frame['收盘'] <= 0).any():
             raise ValueError('行情含无效数值')
-        if len(frame) < 20 or (pd.Timestamp(required) - frame['日期'].min()).days < 60:
-            raise ValueError('历史覆盖不足，不能判定资格')
         return frame
     if cache.exists():
         try:
