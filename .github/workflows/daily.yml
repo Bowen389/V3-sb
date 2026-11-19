@@ -1,73 +1,87 @@
 name: 首板与 V3 每日模拟
-
 on:
   push:
     branches: [main]
-    paths:
-      - scan.py
-      - requirements.txt
-      - .github/workflows/daily.yml
+    paths: [scan.py, test_scan.py, requirements.txt, .github/workflows/daily.yml]
   schedule:
     - cron: '12 8 * * 1-5'
+    - cron: '42 9 * * 1-5'
+    - cron: '22 11 * * 1-5'
   workflow_dispatch:
     inputs:
       buy_date:
-        description: '买入日 YYYY-MM-DD，留空为北京时间今天'
+        description: '已收盘交易日 YYYY-MM-DD，留空取最近已收盘交易日'
         required: false
         type: string
-
 permissions:
   contents: write
-
 concurrency:
   group: v3-sb-reports
   cancel-in-progress: false
-
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+      - run: git pull --ff-only origin main
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
       - run: pip install -r requirements.txt
+      - run: python -m unittest test_scan -v
+      - uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: v3-sb-data-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: v3-sb-data-
       - name: 生成盘后预选
+        id: preselect
+        continue-on-error: true
         env:
-          SIGNAL_DATE: ${{ inputs.buy_date }}
+          REQUEST_DATE: ${{ inputs.buy_date }}
         run: |
-          if [ -n "$SIGNAL_DATE" ]; then
-            python scan.py --preselect --buy-date "$SIGNAL_DATE"
-          else
-            python scan.py --preselect
-          fi
-      - name: 保存预选
-        if: success()
-        run: |
-          if [ -d reports/preselect ]; then
-            git add reports/preselect
-            if ! git diff --cached --quiet; then
-              git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -m "Update after-close candidates"
-              git push
-            fi
-          fi
-      - name: 运行扫描
+          args=()
+          if [ -n "$REQUEST_DATE" ]; then args+=(--buy-date "$REQUEST_DATE"); fi
+          python -u scan.py --preselect "${args[@]}"
+      - name: 生成开盘价模型模拟
+        id: simulation
+        continue-on-error: true
         env:
-          BUY_DATE: ${{ inputs.buy_date }}
+          REQUEST_DATE: ${{ inputs.buy_date }}
         run: |
-          if [ -n "$BUY_DATE" ]; then
-            python scan.py --buy-date "$BUY_DATE"
-          else
-            python scan.py
-          fi
-      - name: 保存报告
+          args=()
+          if [ -n "$REQUEST_DATE" ]; then args+=(--buy-date "$REQUEST_DATE"); fi
+          python -u scan.py "${args[@]}"
+      - name: 保存报告和缺失清单
+        if: always()
         run: |
-          if [ -d reports ]; then
-            git add reports
-            if ! git diff --cached --quiet; then
-              git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -m "Update V3-sb report"
-              git push
-            fi
-          fi
+          if [ ! -d reports ]; then exit 0; fi
+          git add reports
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Publish V3-sb reports and data coverage'
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 3
+          done
+          exit 1
+      - uses: actions/cache/save@v4
+        if: always() && hashFiles('data/**/*.csv') != ''
+        with:
+          path: data
+          key: v3-sb-data-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3-sb-reports-${{ github.run_id }}
+          path: reports/
+          if-no-files-found: ignore
+      - name: 核验数据源整体故障
+        if: always() && (steps.preselect.outcome == 'failure' || steps.simulation.outcome == 'failure')
+        run: exit 1
