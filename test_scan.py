@@ -27,9 +27,19 @@ class RecoveryTests(unittest.TestCase):
         bad = self.bars().drop(columns='成交额')
         with tempfile.TemporaryDirectory() as root, patch('scan.Path', side_effect=lambda p: Path(root) / p), \
              patch.object(scan.ak, 'stock_zh_a_hist_em', return_value=bad), \
-             patch.object(scan.ak, 'stock_zh_a_hist_sina', return_value=bad):
+             patch.object(scan.ak, 'stock_zh_a_hist_sina', return_value=bad), \
+             patch.object(scan.ak, 'stock_zh_a_hist_tx', return_value=bad):
             with self.assertRaisesRegex(RuntimeError, '字段不完整'):
                 scan.history('002685', '', '20260701', '20261118', pd.Timestamp('2026-11-18'))
+
+    def test_tencent_raw_fallback_requires_real_amount(self):
+        with tempfile.TemporaryDirectory() as root, patch('scan.Path', side_effect=lambda p: Path(root) / p), \
+             patch.object(scan.ak, 'stock_zh_a_hist_em', side_effect=RuntimeError('rate limited')), \
+             patch.object(scan.ak, 'stock_zh_a_hist_sina', side_effect=RuntimeError('timeout')), \
+             patch.object(scan.ak, 'stock_zh_a_hist_tx', return_value=self.bars()) as backup:
+            result = scan.history('002685', '', '20260701', '20261118', pd.Timestamp('2026-11-18'))
+            self.assertEqual(result.iloc[-1]['成交额'], 100_000_000.)
+            backup.assert_called_once()
 
     def run_partial(self, preselect):
         pool = pd.DataFrame({'代码': ['002685', '600001'], '名称': ['缺价票', '正常票'], '连板数': [1, 1]})
