@@ -4,9 +4,9 @@ on:
     branches: [main]
     paths: [scan.py, test_scan.py, requirements.txt, .github/workflows/daily.yml]
   schedule:
-    - cron: '12 8 * * 1-5'
-    - cron: '42 9 * * 1-5'
-    - cron: '22 11 * * 1-5'
+    # UTC: 北京时间周一至周五17:00主跑，18:00补跑
+    - cron: '0 9 * * 1-5'
+    - cron: '0 10 * * 1-5'
   workflow_dispatch:
     inputs:
       buy_date:
