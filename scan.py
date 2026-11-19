@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
+from threading import Lock
 from zoneinfo import ZoneInfo
 import argparse
 import json
@@ -10,6 +11,12 @@ import akshare as ak
 import pandas as pd
 
 MAIN = r"(600|601|603|605|000|001|002|003)\d{3}"
+SINA_LOCK = Lock()
+
+def sina_history(**kwargs):
+    # Sina's decoder embeds V8; concurrent first initialization can abort Python.
+    with SINA_LOCK:
+        return ak.stock_zh_a_hist_sina(**kwargs)
 
 def history(code, adjust, start, end, required):
     """Only accept a source/cache after validating the requested session."""
@@ -40,7 +47,7 @@ def history(code, adjust, start, end, required):
             pass
     symbol = ('sh' if code.startswith('6') else 'sz') + code
     sources = [lambda: ak.stock_zh_a_hist_em(symbol=code, start_date=start, end_date=end, adjust=adjust),
-               lambda: ak.stock_zh_a_hist_sina(symbol=symbol, start_date=start, end_date=end, adjust=adjust)]
+               lambda: sina_history(symbol=symbol, start_date=start, end_date=end, adjust=adjust)]
     if adjust:
         sources.append(lambda: ak.stock_zh_a_hist_tx(symbol=symbol, start_date=start, end_date=end, adjust=adjust))
     errors = []
